@@ -8,7 +8,7 @@ import java.util.regex.Pattern
  * Created by SuperRainbowNinja on 8/01/2018.
  */
 
-const val DEFAULT_STRUCT_PATTERN = "\\s*(?:struct)\\s+(\\w[\\w\\d]+)\\s*\\{([^\\{\\}]*)\\}"
+const val DEFAULT_STRUCT_PATTERN = "\\s*(?:struct)\\s+(\\w[\\w\\d]+)\\s*\\{(?:((?:\\s|.)*?\\;)\\s*\\}|\\s*\\})"
 const val DEFAULT_PROPERTY_PATTERN = "\\s*(\\w[\\w\\d]*)\\s+(\\w[\\w\\d]*)\\s*(?:\\[([^\\;]*)\\])?(?:\\s+=\\s*([^;]+))?\\;"
 
 const val NAME_GROUP = 1
@@ -50,7 +50,7 @@ class Lex() {
                     propMatch.group(4) != null -> properties.add(
                             ParsedMagicNumber(propMatch.group(1),
                                     propMatch.group(2),
-                                    getConstantProperty(propMatch.group(4)))
+                                    getConstantProperty(propMatch.group(4)), propMatch.group(3))
                     )
                     propMatch.group(3) != null -> properties.add(ParsedIndexProperty(propMatch.group(1), propMatch.group(2), propMatch.group(3)))
                     else -> properties.add(ParsedProperty(propMatch.group(1), propMatch.group(2)))
@@ -70,7 +70,7 @@ class Lex() {
 sealed class Property
 data class ParsedProperty(val type: String, val name: String) : Property()
 data class ParsedIndexProperty(val type: String, val name: String, val indexExp: String) : Property()
-data class ParsedMagicNumber(val type: String, val name: String, val value: ConstantProperty) : Property()
+data class ParsedMagicNumber(val type: String, val name: String, val value: ConstantProperty, val array: String?) : Property()
 
 sealed class ConstantProperty
 data class ConsInt(val num: BigInteger) : ConstantProperty()

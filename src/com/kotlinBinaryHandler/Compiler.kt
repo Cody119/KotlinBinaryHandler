@@ -67,8 +67,22 @@ class Compiler(val lex: Lex) {
                         nameMap[property.name] = i
                         val fac = types[property.type]
                         if (fac != null) {
-                            val factory = fac(property.name)
-                            factoryList[i] = (factory as ConstantProvider).with(property.value).getConstant()
+                            if (property.array == null) {
+                                val factory = fac(property.name)
+                                factoryList[i] = factory.with(property.value)
+                            } else {
+                                val length = property.array.toIntOrNull() ?: throw Exception("Cannot use variable array with constant values")
+                                val lengthGetter = object : ILengthProxy, Constant {
+                                    override var length: Int
+                                        get() = length
+                                        set(value) {
+                                            if (length != value) throw Exception("Tried to serialize array with wrong length")
+                                        }
+
+                                }
+                                factoryList[i] = VarArraySerializer(property.name, fac("") as IIndependentSerializer, lengthGetter)
+                                        .with(property.value)
+                            }
                         } else {
                             throw Exception("no type")
                         }
