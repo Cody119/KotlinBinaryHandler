@@ -2,7 +2,6 @@ package com.kotlinTest
 
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.util.*
 
 /**
  * Created by SuperRainbowNinja on 19/01/2018.
@@ -19,7 +18,7 @@ abstract class TestCase {
     fun getBuff() = TestOutputStream()
     fun getBuff(x : Int) = TestOutputStream(x)
 
-    var result : Result = Success()
+    var result = true
         private set
     var resString = ""
         private set
@@ -37,12 +36,12 @@ abstract class TestCase {
     }
 
     fun fail() {
-        result = Failure()
+        result = false
     }
 
     internal fun reset() {
         removeMessages()
-        result = Success()
+        result = true
     }
 }
 
@@ -57,23 +56,23 @@ fun doTests(vararg tests: DoTest) {
         for (XXX in Array(test.rep, {})) {
             try {
                 test.case.runTestCase()
-                when (test.case.result) {
-                    is Success -> {
-                        if (!test.case.resString.isEmpty()) {
-                            println(test.case.resString)
-                        }
+                if (test.case.result) {
+                    if (!test.case.resString.isEmpty()) {
+                        println(test.case.resString)
                     }
-                    is Failure -> {
-                        failureCount++
-                        if (!test.case.resString.isEmpty()) {
-                            println(test.case::class.simpleName + " test failed with message:\n" + test.case.resString)
-                        }
+                } else {
+                    failureCount++
+                    if (!test.case.resString.isEmpty()) {
+                        println(test.case::class.simpleName + " test failed with message:\n" + test.case.resString)
                     }
                 }
             } catch (x : Exception) {
                 failureCount++
-                println(test.case::class.simpleName + " test failed with message:")
-                println(x.localizedMessage)
+                println(test.case::class.simpleName + " test failed with Exception:")
+                println(x.message)
+                x.stackTrace.forEach {
+                    println(it.toString())
+                }
             }
             test.case.reset()
         }
@@ -86,23 +85,3 @@ fun doTests(vararg tests: DoTest) {
             }
     )
 }
-
-fun charArray(vararg v : Char) : CharArray {
-    return CharArray(v.size, v::get)
-}
-
-val characters = charArray('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z')
-
-fun generateString() : String {
-    val tmp = Random()
-    val cc = ArrayList<Char>()
-    cc.addAll(characters.asList())
-    cc.addAll(characters.map { it.toUpperCase() })
-
-    return String(CharArray(tmp.nextInt(10), {cc[tmp.nextInt(cc.size)]}))
-}
-
-sealed class Result
-class Success : Result()
-//data class SuccessWithMessage(val msg: String) : Result()
-class Failure : Result()

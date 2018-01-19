@@ -21,7 +21,7 @@ interface IDependentSerializer {
     fun deserialize(stream: InputStream)
     fun getConstant() : IIndependentSerializer
     fun with(value: ConstantProperty) : IIndependentSerializer
-    //TODO copy method
+    fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>) : IDependentSerializer
 }
 
 interface IIndependentSerializer : IDependentSerializer
@@ -32,9 +32,9 @@ interface ILengthProxy {
 
 interface LengthProxySerializer : ILengthProxy, IDependentSerializer
 
-interface LengthProxyProvider {
-    fun getProxy() : LengthProxySerializer
-}
+//interface LengthProxyProvider {
+//    fun getProxy() : LengthProxySerializer
+//}
 
 
 interface Constant {
@@ -42,9 +42,16 @@ interface Constant {
 }
 
 class VarArraySerializer(override val name: String, val serializer: IIndependentSerializer, val lengthGetter: ILengthProxy) : IDependentSerializer {
-    init {
-//        if (lengthGetter is Constant) throw Exception("Provided var array with constant length, use constant array instead")
-    }
+    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer =
+        VarArraySerializer(
+                name,
+                serializer.copy(ser, names) as IIndependentSerializer,
+                if (lengthGetter is Constant) {
+                    lengthGetter
+                } else {
+                    ser[names[(lengthGetter as IDependentSerializer).name] ?: throw Exception("")] as ILengthProxy
+                }
+        )
 
     override var value: Any
         get() = array
@@ -111,6 +118,9 @@ class VarArraySerializer(override val name: String, val serializer: IIndependent
     }
 
     class ConsArray(override val name: String, var array: Array<IDependentSerializer>) : IIndependentSerializer, Constant {
+        //For the moment constants are constant and shouldn't change any internal values
+        override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = this
+
         override fun getConstant(): IIndependentSerializer = this
 
         override fun with(value: ConstantProperty): IIndependentSerializer {
@@ -141,7 +151,7 @@ class VarArraySerializer(override val name: String, val serializer: IIndependent
     }
 }
 
-abstract class NumSerializer(override val name: String) : IIndependentSerializer, LengthProxyProvider, LengthProxySerializer {
+abstract class NumSerializer(override val name: String) : IIndependentSerializer, LengthProxySerializer {
     override fun with(value: ConstantProperty): IIndependentSerializer {
         return when (value) {
             is ConsFloat -> {
@@ -169,9 +179,9 @@ abstract class NumSerializer(override val name: String) : IIndependentSerializer
 
     abstract var num: Number
 
-    override fun getProxy(): LengthProxySerializer = this
+    //override fun getProxy(): LengthProxySerializer = this
 
-    abstract class ConstNumSerializer(override val name: String) : IIndependentSerializer, LengthProxyProvider, LengthProxySerializer, Constant {
+    abstract class ConstNumSerializer(override val name: String) : IIndependentSerializer, LengthProxySerializer, Constant {
         abstract var num: Number
 
         override fun getConstant(): IIndependentSerializer = this
@@ -196,15 +206,6 @@ abstract class NumSerializer(override val name: String) : IIndependentSerializer
             get() = num
             set(value) = throw Exception("Tried to change value of constant")
 
-        //override fun serialize(stream: OutputStream) = serInt(stream, num)
-
-//        override fun deserialize(stream: InputStream) {
-//            val input = getInt(stream)
-//            if (input != num) {
-//                throw Exception("Magic number $num not found")
-//            }
-//        }
-
         fun checkConstant(input: Number) {
             if (input != num) {
                 throw Exception("Magic number $num not found")
@@ -217,7 +218,7 @@ abstract class NumSerializer(override val name: String) : IIndependentSerializer
                 if (length != value) throw Exception("Tried to serialize array with wrong length")
             }
 
-        override fun getProxy(): LengthProxySerializer = this
+        //override fun getProxy(): LengthProxySerializer = this
     }
 
     override fun getConstant(): IIndependentSerializer = getConstant(name, num)
@@ -226,7 +227,7 @@ abstract class NumSerializer(override val name: String) : IIndependentSerializer
 
 }
 
-class CustomSerializer(override val name: String, val serializers: Array<IDependentSerializer>) : IIndependentSerializer {
+class CustomSerializer(override val name: String, val serializers: Array<IDependentSerializer>, val nameMap: HashMap<String, Int>) : IIndependentSerializer {
     override fun with(value: ConstantProperty): IIndependentSerializer {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
@@ -263,6 +264,26 @@ class CustomSerializer(override val name: String, val serializers: Array<IDepend
             serializers[it].deserialize(stream)
             serializers[it].value
         })
+    }
+
+    operator fun get(name: String) : IDependentSerializer {
+        return this[nameMap[name] ?: throw Exception("tried to get ")]
+    }
+
+    operator fun get(index: Int) : IDependentSerializer {
+        return serializers[index]
+    }
+
+    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): CustomSerializer {
+        val newSerializers = ArrayList<IDependentSerializer>()
+        serializers.forEach {
+            newSerializers.add(it.copy(newSerializers, nameMap))
+        }
+        return CustomSerializer(
+                name,
+                Array(newSerializers.size, newSerializers::get),
+                nameMap.clone() as HashMap<String, Int>
+        )
     }
 
 }

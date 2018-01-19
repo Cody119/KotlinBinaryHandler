@@ -16,13 +16,15 @@ class Compiler(val lex: Lex) {
         types["char"] = ::CharSerializer
     }
 
-    fun compile(source: String) : CustomSerializer {
+    fun compile(source: String) : ArrayList<CustomSerializer> {
         val AST = lex.parse(source)
-        val nameMap = HashMap<String, Int>()
-        val factoryList = Array<IDependentSerializer?>(AST.structs[0].property.size, { null })
+        val compiledStructs: ArrayList<CustomSerializer> = ArrayList()
 
         //TODO error checks
         for (struct in AST.structs) {
+            val nameMap = HashMap<String, Int>()
+            val factoryList = Array<IDependentSerializer?>(struct.property.size, { null })
+
             for ((i, property) in struct.property.withIndex()) {
                 when (property) {
                     is ParsedProperty -> {
@@ -41,7 +43,7 @@ class Compiler(val lex: Lex) {
                         val lengthGetter: ILengthProxy
                         if (num == null) {
                             val ref = nameMap[property.indexExp] as Int
-                            factoryList[ref] = (factoryList[ref] as LengthProxyProvider).getProxy()
+                            factoryList[ref] = factoryList[ref]
                             lengthGetter = factoryList[ref] as ILengthProxy
                         } else {
                             lengthGetter = object : ILengthProxy, Constant {
@@ -90,8 +92,17 @@ class Compiler(val lex: Lex) {
                     }
                 }
             }
+            compiledStructs.add(
+                    CustomSerializer(
+                            struct.name,
+                            Array(factoryList.size, {
+                                factoryList[it] ?: throw Exception("Unresonable exception")
+                            }),
+                            nameMap
+                    )
+            )
         }
-        return CustomSerializer(AST.structs[0].name ,Array(factoryList.size, { factoryList.get(it) ?: throw Exception("Unresonable exception")}))
+        return compiledStructs
     }
 }
 

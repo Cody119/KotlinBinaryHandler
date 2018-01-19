@@ -23,6 +23,8 @@ fun getInt(stream: InputStream) : Int {
 }
 
 class CharSerializer(name: String) : NumSerializer(name) {
+    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = CharSerializer(name)
+
     override fun getConstant(name: String, num: Number): IIndependentSerializer = ConstCharSerializer(name, num.toChar())
 
     override fun serialize(stream: OutputStream) = stream.write(_num.toInt())
@@ -47,6 +49,7 @@ class CharSerializer(name: String) : NumSerializer(name) {
     var _num : Char = 'a'
 
     class ConstCharSerializer(name: String, var _num : Char) : ConstNumSerializer(name) {
+        override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = this
 
         override var num: Number
             get() = _num.toInt()
@@ -66,6 +69,8 @@ class CharSerializer(name: String) : NumSerializer(name) {
 }
 
 class IntSerializer(name: String) : NumSerializer(name) {
+    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = IntSerializer(name)
+
     override fun getConstant(name: String, num: Number): IIndependentSerializer = ConstIntSerializer(name, num.toInt())
 
     override fun serialize(stream: OutputStream) = serInt(stream, _num)
@@ -84,6 +89,7 @@ class IntSerializer(name: String) : NumSerializer(name) {
     var _num : Int = 0
 
     class ConstIntSerializer(name: String, var _num : Int) : ConstNumSerializer(name) {
+        override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = this
 
         override var num: Number
             get() = _num
