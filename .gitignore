@@ -3,4 +3,5 @@
 /*
 # Un-ignore all of subtree
 !/src/
+!/test/
 !.gitignore

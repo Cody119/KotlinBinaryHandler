@@ -13,6 +13,7 @@ class Compiler(val lex: Lex) {
 
     init {
         types["int"] = ::IntSerializer
+        types["char"] = ::CharSerializer
     }
 
     fun compile(source: String) : CustomSerializer {
