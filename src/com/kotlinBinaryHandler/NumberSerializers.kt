@@ -2,6 +2,7 @@ package com.kotlinBinaryHandler
 
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.reflect.KClass
 
 /**
  * Created by SuperRainbowNinja on 19/01/2018.
@@ -22,88 +23,72 @@ fun getInt(stream: InputStream) : Int {
     return num
 }
 
-class CharSerializer(name: String) : NumSerializer(name) {
-    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = CharSerializer(name)
-
-    override fun getConstant(name: String, num: Number): IIndependentSerializer = ConstCharSerializer(name, num.toChar())
-
-    override fun serialize(stream: OutputStream) = stream.write(_num.toInt())
-
-    override fun deserialize(stream: InputStream) {
-        _num = stream.read().toChar()
-        //println(num)
+class CharSerializer<T>(
+        override val name: String,
+        val getter : (IDependentSerializer<T>, T) -> Char,
+        val setter : (IDependentSerializer<T>, T, Char) -> Unit
+) : IIndependentSerializer<T> {
+    override fun serialize(stream: OutputStream, data: T) {
+        stream.write(getter(this, data).toInt())
     }
 
-    override var value: Any
-        get() = _num
-        set(value) {
-            _num = value as? Char ?: throw Exception("Provided number serializer with none number object")
-        }
-
-    override var num: Number
-        get() = _num.toInt()
-        set(value) {
-            _num = value.toChar()
-        }
-
-    var _num : Char = 'a'
-
-    class ConstCharSerializer(name: String, var _num : Char) : ConstNumSerializer(name) {
-        override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = this
-
-        override var num: Number
-            get() = _num.toInt()
-            set(value) {
-                _num = value.toChar()
-            }
-
-        override fun serialize(stream: OutputStream) = stream.write(_num.toInt())
-
-        override fun deserialize(stream: InputStream) {
-            val input = stream.read()
-            checkConstant(input)
-        }
-
-        override fun getConstant(name: String, num: Number): IIndependentSerializer  = ConstCharSerializer(name, num.toChar())
+    override fun deserialize(stream: InputStream, data: T) {
+        setter(this, data, stream.read().toChar())
     }
 }
 
-class IntSerializer(name: String) : NumSerializer(name) {
-    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = IntSerializer(name)
+class IntFactory(override var name : String) : IFactory {
+    override var parent: ICompoundFactory? = null
 
-    override fun getConstant(name: String, num: Number): IIndependentSerializer = ConstIntSerializer(name, num.toInt())
+    override fun isConstant(): Boolean =
+            value != null
 
-    override fun serialize(stream: OutputStream) = serInt(stream, _num)
+    var value : Int? = null
 
-    override fun deserialize(stream: InputStream) {
-        _num = getInt(stream)
-        //println(num)
+    override fun setValue(const : ConstantProperty) {
+        value = (const as? ConsInt)?.num?.toInt() ?: throw Exception("")
     }
 
-    override var num: Number
-        get() = _num
-        set(value) {
-            _num = value.toInt()
-        }
-
-    var _num : Int = 0
-
-    class ConstIntSerializer(name: String, var _num : Int) : ConstNumSerializer(name) {
-        override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer = this
-
-        override var num: Number
-            get() = _num
-            set(value) {
-                _num = value.toInt()
+    override fun <T: Any> create(
+            valueType: KClass<*>,
+            getter : (IDependentSerializer<T>, T) -> Any,
+            setter : (IDependentSerializer<T>, T, Any) -> Unit
+    ) : IDependentSerializer<T> {
+        val value = value
+        return if (value == null) {
+            if (valueType == Int::class) {
+                IntSerializer(name,
+                        (getter as (IDependentSerializer<T>, T) -> Int),
+                        (setter as (IDependentSerializer<T>, T, Int) -> Unit)
+                )
+            } else {
+                throw Exception()
             }
-
-        override fun serialize(stream: OutputStream) = serInt(stream, _num)
-
-        override fun deserialize(stream: InputStream) {
-            val input = getInt(stream)
-            checkConstant(input)
+        } else {
+            ConstIntSerializer(name, value)
         }
-
-        override fun getConstant(name: String, num: Number): IIndependentSerializer  = ConstIntSerializer(name, num.toInt())
     }
+}
+
+class IntSerializer<T>(
+        name: String,
+        getter : (IDependentSerializer<T>, T) -> Int,
+        setter : (IDependentSerializer<T>, T, Int) -> Unit
+) : NumSerializer<T, Int>(name, getter, setter) {
+    override fun serialize(stream: OutputStream, data: T) =
+            serInt(stream, getter(this, data))
+
+    override fun deserialize(stream: InputStream, data: T) =
+            setter(this, data, getInt(stream))
+}
+
+class ConstIntSerializer<T>(
+        name : String,
+        num : Int
+) : ConstNumSerializer<T, Int>(name, num) {
+    override fun serialize(stream: OutputStream, data: T) =
+            serInt(stream, Num)
+
+    override fun deserialize(stream: InputStream): Int =
+            getInt(stream)
 }

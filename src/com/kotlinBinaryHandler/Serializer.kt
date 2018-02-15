@@ -2,8 +2,10 @@ package com.kotlinBinaryHandler
 
 import java.io.InputStream
 import java.io.OutputStream
-import java.math.BigDecimal
-import java.math.BigInteger
+import kotlin.reflect.KClass
+import kotlin.reflect.KMutableProperty1
+import kotlin.reflect.full.memberProperties
+import kotlin.reflect.jvm.jvmErasure
 
 /**
  * Created by SuperRainbowNinja on 11/01/2018.
@@ -14,33 +16,53 @@ import java.math.BigInteger
  */
 
 
-interface IDependentSerializer {
+interface IDependentSerializer<T> {
     val name: String
-    var value: Any
-    fun serialize(stream: OutputStream)
-    fun deserialize(stream: InputStream)
-    fun getConstant() : IIndependentSerializer
-    fun with(value: ConstantProperty) : IIndependentSerializer
-    fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>) : IDependentSerializer
+    //var value: Any
+    fun serialize(stream: OutputStream, data : T)
+    fun deserialize(stream: InputStream, data : T)
+    //fun getConstant() : IIndependentSerializer<T>
 }
 
-interface IIndependentSerializer : IDependentSerializer
+interface IIndependentSerializer<T> : IDependentSerializer<T>
 
-interface ILengthProxy {
-    var length: Int
+interface ILengthProxy<in T> {
+    fun getLength(data : T) : Int
 }
 
-interface LengthProxySerializer : ILengthProxy, IDependentSerializer
+interface LengthProxySerializer<T> : ILengthProxy<T>, IDependentSerializer<T>
 
-//interface LengthProxyProvider {
-//    fun getProxy() : LengthProxySerializer
-//}
+
+//TODO need 2 confirm getter and setter accept and return correct values
+interface IFactory {
+    val name: String
+
+    var parent: ICompoundFactory?
+
+    fun setValue(const : ConstantProperty)
+
+    fun isConstant() : Boolean
+
+    //fun resolveRefrences(members : Map<String, IFactory>) {}
+
+    //TODO these getters r wrong lol, they need 2 be generic
+    fun <T: Any> create(
+            valueType: KClass<*>,
+            getter : (IDependentSerializer<T>, T) -> Any,
+            setter : (IDependentSerializer<T>, T, Any) -> Unit
+    ) : IDependentSerializer<T>
+}
+
+interface ICompoundFactory: IFactory {
+    val factoryMap: Map<String, IFactory>
+    fun <T: Any > create(valueType: KClass<T>): IDependentSerializer<T>
+}
 
 
 interface Constant {
     fun compare(o: Constant) {}
 }
-
+/*
 class VarArraySerializer(override val name: String, val serializer: IIndependentSerializer, val lengthGetter: ILengthProxy) : IDependentSerializer {
     override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): IDependentSerializer =
         VarArraySerializer(
@@ -150,140 +172,153 @@ class VarArraySerializer(override val name: String, val serializer: IIndependent
         }
     }
 }
+*/
 
-abstract class NumSerializer(override val name: String) : IIndependentSerializer, LengthProxySerializer {
-    override fun with(value: ConstantProperty): IIndependentSerializer {
-        return when (value) {
-            is ConsFloat -> {
-                getConstant(name, value.num)
-            }
-            is ConsInt -> {
-                getConstant(name, value.num)
-            }
-            else -> {
-                throw Exception("Wrong type provided to Number")
-            }
+class ArraySerializer<T>(
+        override val name: String,
+        val serializer: IIndependentSerializer<Any>,
+        val getter : (IDependentSerializer<T>, T) -> Array<Any>,
+        val setter : (IDependentSerializer<T>, T, Array<Any>) -> Unit,
+        val lengthGetter: ILengthProxy<T>
+) : IDependentSerializer<T>, ILengthProxy<T> {
+    override fun serialize(stream: OutputStream, data: T) {
+        val x = getter(this, data)
+        x.forEach {
+            serializer.serialize(stream, it)
         }
+
     }
 
-    override var length: Int
-        get() = num.toInt()
-        set(value) {
-            num = value
-        }
-    override var value: Any
-        get() = num
-        set(value) {
-            num = value as? Int ?: throw Exception("Provided number serializer with none number object")
-        }
+    override fun deserialize(stream: InputStream, data: T) {
+        val x = Array<Any>(lengthGetter.getLength(data), {
 
-    abstract var num: Number
-
-    //override fun getProxy(): LengthProxySerializer = this
-
-    abstract class ConstNumSerializer(override val name: String) : IIndependentSerializer, LengthProxySerializer, Constant {
-        abstract var num: Number
-
-        override fun getConstant(): IIndependentSerializer = this
-
-        abstract fun getConstant(name: String, num: Number) : IIndependentSerializer
-
-        override fun with(value: ConstantProperty): IIndependentSerializer {
-            return when (value) {
-                is ConsFloat -> {
-                    getConstant(name, value.num)
-                }
-                is ConsInt -> {
-                    getConstant(name, value.num)
-                }
-                else -> {
-                    throw Exception("Wrong type provided to Number")
-                }
-            }
-        }
-
-        override var value: Any
-            get() = num
-            set(value) = throw Exception("Tried to change value of constant")
-
-        fun checkConstant(input: Number) {
-            if (input != num) {
-                throw Exception("Magic number $num not found")
-            }
-        }
-
-        override var length: Int
-            get() = num.toInt()
-            set(value) {
-                if (length != value) throw Exception("Tried to serialize array with wrong length")
-            }
-
-        //override fun getProxy(): LengthProxySerializer = this
-    }
-
-    override fun getConstant(): IIndependentSerializer = getConstant(name, num)
-
-    abstract fun getConstant(name: String, num: Number) : IIndependentSerializer
-
-}
-
-class CustomSerializer(override val name: String, val serializers: Array<IDependentSerializer>, val nameMap: HashMap<String, Int>) : IIndependentSerializer {
-    override fun with(value: ConstantProperty): IIndependentSerializer {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-    }
-
-    override fun getConstant(): IIndependentSerializer {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-    }
-
-    override var value: Any
-        get() = array
-        set(value) {
-            array = value as Array<Any>
-        }
-
-    var array: Array<Any> = Array(0, {})
-
-    fun serialize(stream: OutputStream, data: Array<Any>) {
-        array = data
-        serialize(stream)
-    }
-
-    override fun serialize(stream: OutputStream) {
-        for ((i, property) in serializers.withIndex()) {
-            if (property !is Constant)
-                property.value = array[i]
-        }
-        serializers.forEach {
-            it.serialize(stream)
-        }
-    }
-
-    override fun deserialize(stream: InputStream) {
-        array = Array(serializers.size, {
-            serializers[it].deserialize(stream)
-            serializers[it].value
         })
     }
 
-    operator fun get(name: String) : IDependentSerializer {
-        return this[nameMap[name] ?: throw Exception("tried to get ")]
+    override fun getLength(data: T): Int {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
-    operator fun get(index: Int) : IDependentSerializer {
-        return serializers[index]
-    }
+}
 
-    override fun copy(ser: List<IDependentSerializer>, names: HashMap<String, Int>): CustomSerializer {
-        val newSerializers = ArrayList<IDependentSerializer>()
-        serializers.forEach {
-            newSerializers.add(it.copy(newSerializers, nameMap))
+abstract class NumSerializer<T, N : Number>(
+        override val name: String,
+        val getter : (IDependentSerializer<T>, T) -> N,
+        val setter : (IDependentSerializer<T>, T, N) -> Unit
+) : IIndependentSerializer<T>, ILengthProxy<T> {
+
+    override fun getLength(data : T) : Int = getter(this, data).toInt()
+}
+
+abstract class ConstNumSerializer<T, out N : Number>(
+        override val name: String,
+        val Num : N
+) : IIndependentSerializer<T>, ILengthProxy<T>, Constant {
+    override fun getLength(data: T): Int = Num.toInt()
+
+    abstract fun deserialize(stream: InputStream) : N
+    override fun deserialize(stream: InputStream, data: T) {
+        if (Num != deserialize(stream)) {
+            throw Error("Serialized number wrong")
         }
-        return CustomSerializer(
-                name,
-                Array(newSerializers.size, newSerializers::get),
-                nameMap.clone() as HashMap<String, Int>
-        )
+    }
+}
+
+fun <T, E> nGet(x: IDependentSerializer<T>, y: T): E =
+        throw Exception("Used ")
+
+fun <T, E> nSet(x: IDependentSerializer<T>, y: T, z: E): Unit =
+        throw Exception("Used ")
+
+class CompoundSerializerFactory(
+        override val name : String,
+        override val factoryMap: Map<String, IFactory>,
+        val type : String,
+        val factorys: Array<IFactory>) : ICompoundFactory {
+
+    init { factorys.forEach { it.parent = this } }
+
+    override var parent: ICompoundFactory? = null
+
+    override fun isConstant(): Boolean =
+            factorys.all { it.isConstant() }
+
+    fun create(name : String) : IFactory {
+        return CompoundSerializerFactory(name, factoryMap, type, factorys)
     }
 
+    override fun <T: Any> create(
+            valueType: KClass<*>,
+            getter: (IDependentSerializer<T>, T) -> Any,
+            setter: (IDependentSerializer<T>, T, Any) -> Unit
+    ): IDependentSerializer<T> {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+//TODO abstract the creation of getters and setters
+    override fun <T: Any > create(valueType: KClass<T>): IDependentSerializer<T> {
+        val map = HashMap<String, KMutableProperty1<T,Any>>()
+        for (x in valueType.memberProperties) {
+            val y = x
+            //TODO Throw some error checking in this
+            if (y is KMutableProperty1<*,*>) {
+                map[y.name] = (y as KMutableProperty1<T,Any>)
+            }
+        }
+        val ar = Array(factorys.size, {
+            val x = factorys[it]
+            val y = map[x.name]
+            if (y != null) {
+                x.create<T>(
+                        y.returnType.jvmErasure,
+                        {_, receiver -> y.get(receiver)},
+                        {_, receiver, value -> y.set(receiver, value)}
+                )
+            } else {
+                throw Exception()
+            }
+        })
+
+        return CompoundSerializer(name, ar)
+    }
+
+    override fun setValue(const: ConstantProperty) {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        //Copy the array
+    }
+
+}
+
+class CompoundSerializer1<T>(
+        override val name: String,
+        val serializers: Array<IDependentSerializer<Any>>,
+        val getter: (IDependentSerializer<T>, T) -> Any,
+        val setter: (IDependentSerializer<T>, T, Any) -> Unit
+) : IDependentSerializer<T> {
+    override fun serialize(stream: OutputStream, data: T) {
+        val data = getter(this, data)
+        serializers.forEach {
+            it.serialize(stream, data)
+        }
+    }
+//TODO the getter needs 2 create the class maybe?
+    override fun deserialize(stream: InputStream, data: T) {
+        val data = getter(this, data)
+        serializers.forEach {
+            it.deserialize(stream, data)
+        }
+    }
+}
+
+class CompoundSerializer<T>(override val name: String, val serializers: Array<IDependentSerializer<T>>) : IDependentSerializer<T> {
+    override fun serialize(stream: OutputStream, data: T) {
+        serializers.forEach {
+            it.serialize(stream, data)
+        }
+    }
+
+    override fun deserialize(stream: InputStream, data: T) {
+        serializers.forEach {
+            it.deserialize(stream, data)
+        }
+    }
 }

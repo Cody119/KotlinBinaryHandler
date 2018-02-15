@@ -7,9 +7,8 @@ import com.kotlinTest.doTests
 
 fun main(args: Array<String>) {
     doTests(
-            DoTest(CopyTest()),
-            DoTest(SimpleTest()),
-            DoTest(100, StringTest())
+            DoTest(Test1()),
+            DoTest(Test2())
     )
 }
 
